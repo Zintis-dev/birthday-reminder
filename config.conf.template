@@ -1,2 +1,13 @@
 [setup]
-db_name = database
+db_name =
+
+[smtp]
+sender_email =
+app_password_email =
+receiver_email =
+smtp_server =
+smtp_port =
+
+[email]
+subject =
+body =

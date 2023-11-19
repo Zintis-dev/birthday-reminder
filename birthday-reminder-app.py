@@ -7,17 +7,8 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-file_path = os.path.abspath(__file__)
-dir_path = os.path.dirname(file_path)
 
-conf_name = "config.conf"
-conf_path = dir_path + "\\" + conf_name
-
-db_name = None
-db_path = dir_path + "\\"
-
-
-# Adds birthday to the database, safety checks are not yet implemented
+# Adds birthday to the database
 def add_new_birthday():
     while True:
         try:
@@ -88,6 +79,7 @@ def get_user_month():
         print("Invalid month")
     return month
 
+#TODO: Need to seperate safety checks for day input and add isInstance(day, int)
 def get_user_day(month, year):
     day_count_dict = {
         1: 31,
@@ -108,11 +100,8 @@ def get_user_day(month, year):
     THIS_YEAR = datetime.year
     IS_LEAP_YEAR = calendar.isleap(year)
 
-    feb_day_count = day_count_dict[2]
-
     if IS_LEAP_YEAR:
-        feb_day_count = day_count_dict.get(2)
-        day_count_dict[2] = feb_day_count + 1
+        day_count_dict[2] += feb_day_count + 1
 
     while True:
         day = parse_to_int(input())
@@ -131,6 +120,8 @@ def remove_birthday():
     cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
     print("Removed")
 
+
+#TODO: Fix the incorrect year
 def check_birthdays():
     DATE_TODAY = str(datetime.today().date())
     cursor.execute("SELECT * FROM birthdays WHERE birthday = (?)", (DATE_TODAY,))
@@ -145,18 +136,6 @@ def check_birthdays():
 
 
 def send_email(name, lastname):
-    sender_email = 'smilydark123@gmail.com'
-    receiver_email = 'zsusinskis@gmail.com'
-    password = 'bisd aups nerg zwvi'
-
-    # SMTP server configuration
-    smtp_server = 'smtp.gmail.com'
-    smtp_port = 587
-
-    # Message configuration
-    subject = 'Birthday'
-    body = f'{name} {lastname} HAS A BIRTHDAY TODAY!'
-
     # Create the MIME object
     message = MIMEMultipart()
     message['From'] = sender_email
@@ -169,7 +148,7 @@ def send_email(name, lastname):
     # Connect to the SMTP server
     with smtplib.SMTP(smtp_server, smtp_port) as server:
         server.starttls()  # Use TLS for secure connection
-        server.login(sender_email, password)
+        server.login(sender_email, app_password_email)
         text = message.as_string()
         server.sendmail(sender_email, receiver_email, text)
 
@@ -183,14 +162,31 @@ def parse_to_int(value):
         pass
 
 
+file_path = os.path.abspath(__file__)
+dir_path = os.path.dirname(file_path)
+
+conf_name = "config.conf"
+conf_path = dir_path + "\\" + conf_name
+
+db_name = None
+db_path = dir_path + "\\"
+
 # If config exists, reads the config's values
 if os.path.exists(conf_path):
     config = configparser.ConfigParser()
     config.read(conf_path)
     db_name = config["setup"]["db_name"]
     db_path += db_name + ".db"
+    sender_email = config["smtp"]["sender_email"]
+    app_password_email = config["smtp"]["app_password_email"]
+    receiver_email = config["smtp"]["receiver_email"]
+    smtp_server = config["smtp"]["smtp_server"]
+    smtp_port = config["smtp"]["smtp_port"]
+    subject = config["email"]["subject"]
+    body = config["email"]["body"]
 else:
     print("Config file has not been found!")
+    exit()
 
 connection = sqlite3.connect(db_path)
 cursor = connection.cursor()
@@ -198,7 +194,7 @@ cursor = connection.cursor()
 cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='birthdays'")
 results = cursor.fetchone()
 
-# Checks if database is empty, if it is - creates table birthdays
+#TODO: add this to DB migrations file
 if not results:
     cursor.execute("""CREATE TABLE IF NOT EXISTS birthdays (
                id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,10 +204,10 @@ if not results:
     """)
     print("Created table birthdays")
 
+check_birthdays()
 
 while True:
     print_main_menu()
-    check_birthdays()
     try:
         user_input = int(input())
         if user_input == 1:
