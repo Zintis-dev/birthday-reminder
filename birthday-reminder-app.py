@@ -6,6 +6,7 @@ import calendar
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import logging
 
 
 # Adds birthday to the database
@@ -25,29 +26,29 @@ def add_new_birthday():
             break
         except Exception as e:
             print(e)
-    birthday = f"{year}-{month}-{day}"
-    cursor.execute("INSERT INTO birthdays (name, lastname, birthday) VALUES (?, ?, ?)", (name, lastname, birthday))
+    cursor.execute("INSERT INTO birthdays (name, lastname, day, month, year) VALUES (?, ?, ?, ?, ?)", (name, lastname, day, month, year))
     print("Birthday added successfully")
-
+    print_seperator()
 
 # Fetches all birthdays from the database, prints out tuple
 def print_birthdays():
     print("Fetching all birthdays")
-    print("ID, NAME, LASTNAME, BIRTHDAY")
+    print("ID \tNAME \tLASTNAME \tDAY \tMONTH \tYEAR")
     cursor.execute("SELECT * FROM birthdays")
     results = cursor.fetchall()
     for result in results:
         print(result)
-
+    print_seperator()
 
 def print_main_menu():
     print("""
-    /Main MENU/
+    \t/Main MENU/\n
     1 - add a new birthday
     2 - remove birthday
     3 - check all birthdays
     4 - exit
     """)
+    print_seperator()
 
 
 def is_year_valid(year):
@@ -101,7 +102,7 @@ def get_user_day(month, year):
     IS_LEAP_YEAR = calendar.isleap(year)
 
     if IS_LEAP_YEAR:
-        day_count_dict[2] += feb_day_count + 1
+        day_count_dict[2] += day_count_dict[2] + 1
 
     while True:
         day = parse_to_int(input())
@@ -113,18 +114,17 @@ def get_user_day(month, year):
 
 def remove_birthday():
     print_birthdays()
-    print("--------------------")
     print("Type ID to delete the birthday")
     print("ID: ")
     id = input()
     cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
     print("Removed")
 
-
-#TODO: Fix the incorrect year
+#TODO: Implement feature to send one email if multiple users have birthday on the same day
 def check_birthdays():
-    DATE_TODAY = str(datetime.today().date())
-    cursor.execute("SELECT * FROM birthdays WHERE birthday = (?)", (DATE_TODAY,))
+    day = str(datetime.today().day)
+    month = str(datetime.today().month)
+    cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
     results = cursor.fetchall()
     if results:
         print("Todays birthdays: ")
@@ -136,23 +136,29 @@ def check_birthdays():
 
 
 def send_email(name, lastname):
-    # Create the MIME object
-    message = MIMEMultipart()
-    message['From'] = sender_email
-    message['To'] = receiver_email
-    message['Subject'] = subject
+    try:
+        message = MIMEMultipart()
+        message["From"] = sender_email
+        message["To"] = receiver_email
+        message["Subject"] = subject
 
-    # Attach the body to the email
-    message.attach(MIMEText(body, 'plain'))
+        final_body = f"{name} {lastname} " + body
 
-    # Connect to the SMTP server
-    with smtplib.SMTP(smtp_server, smtp_port) as server:
-        server.starttls()  # Use TLS for secure connection
-        server.login(sender_email, app_password_email)
-        text = message.as_string()
-        server.sendmail(sender_email, receiver_email, text)
+        message.attach(MIMEText(final_body, "plain"))
 
-    print('Email sent successfully!')
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, app_password_email)
+            text = message.as_string()
+            server.sendmail(sender_email, receiver_email, text)
+
+        print("Email sent successfully!")
+    except Exception as e:
+        print(e)
+
+
+def print_seperator():
+    print("------------------------------")
 
 
 def parse_to_int(value):
@@ -184,6 +190,7 @@ if os.path.exists(conf_path):
     smtp_port = config["smtp"]["smtp_port"]
     subject = config["email"]["subject"]
     body = config["email"]["body"]
+    configure = config["setup"]["configure"].lower().strip()
 else:
     print("Config file has not been found!")
     exit()
@@ -200,27 +207,30 @@ if not results:
                id INTEGER PRIMARY KEY AUTOINCREMENT,
                name TEXT NOT NULL,
                lastname TEXT NOT NULL,
-               birthday DATE NOT NULL );
+               day INTEGER NOT NULL,
+               month INTEGER NOT NULL,
+               year INTEGER NOT NULL);
     """)
     print("Created table birthdays")
 
-check_birthdays()
-
-while True:
-    print_main_menu()
-    try:
-        user_input = int(input())
-        if user_input == 1:
-            add_new_birthday()
-        if user_input == 2:
-            remove_birthday()
-        if user_input == 3:
-            print_birthdays()
-        if user_input == 4:
-            print("Bye")
-            break
-    except ValueError as e:
-        print("Invalid input!")
+if configure == "yes":
+    while True:
+        print_main_menu()
+        try:
+            user_input = int(input())
+            if user_input == 1:
+                add_new_birthday()
+            if user_input == 2:
+                remove_birthday()
+            if user_input == 3:
+                print_birthdays()
+            if user_input == 4:
+                print("Bye")
+                break
+        except ValueError as e:
+            print("Invalid input!")
+else:
+    check_birthdays()
 
 cursor.close()
 connection.commit()
