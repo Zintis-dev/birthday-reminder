@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 import logging
 
 # Gets user input for name, lastname, year, month and day. Inserts data into database
-def add_new_birthday():
+def get_birthday_data():
     while True:
         try:
             print("NAME: ")
@@ -24,10 +24,17 @@ def add_new_birthday():
             day = get_user_day(month, year)
             break
         except Exception as e:
-            print(e)
-    cursor.execute("INSERT INTO birthdays (name, lastname, day, month, year) VALUES (?, ?, ?, ?, ?)", (name, lastname, day, month, year))
-    print("Birthday added successfully")
+            logging.error(str(e))
+    add_birthday_to_db(name, lastname, day, month, year)
     print_seperator()
+
+def add_birthday_to_db(name, lastname, day, month, year):
+    try:
+        logging.info("Adding birthday to the database")
+        cursor.execute("INSERT INTO birthdays (name, lastname, day, month, year) VALUES (?, ?, ?, ?, ?)",
+                       (name, lastname, day, month, year))
+    except Exception as e:
+        logging.error(f"Inserting values {name}, {lastname}, {day}, {month}, {year} to the database")
 
 # Fetches all birthdays from the database, prints out as tuple
 def print_birthdays():
@@ -116,8 +123,11 @@ def remove_birthday():
     print("Type ID to delete the birthday")
     print("ID: ")
     id = input()
-    cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
-    print("Removed")
+    try:
+        cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
+        logging.info(f"removed birthday with id {id}")
+    except Exception as e:
+        logging.error(f"removing birthday with ID {id}")
 
 #TODO: Implement feature to send one email if multiple users have birthday on the same day
 
@@ -127,7 +137,7 @@ def check_birthdays():
     month = str(datetime.today().month)
     cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
     results = cursor.fetchall()
-    # Prtins matching results
+    # Prints matching results
     if results:
         print("Todays birthdays: ")
         for result in results:
@@ -148,6 +158,7 @@ def send_email(name, lastname):
 
         message.attach(MIMEText(final_body, "plain"))
 
+        logging.info(f"connecting to {smtp_server} with port {smtp_port}")
         # Connects to the SMTP server and sends email
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
@@ -155,9 +166,9 @@ def send_email(name, lastname):
             text = message.as_string()
             server.sendmail(sender_email, receiver_email, text)
 
-        print("Email sent successfully!")
+        logging.info("Email sent succesfully")
     except Exception as e:
-        print(e)
+        logging.error("sending email " + e)
 
 def print_seperator():
     print("------------------------------")
@@ -168,18 +179,31 @@ def parse_to_int(value):
     except:
         pass
 
+# Closes cursors, connection to the database and saves the altered data
+def save_db_info():
+    logging.info("Saving information to the database")
+    try:
+        cursor.close()
+        connection.commit()
+        connection.close()
+    except Exception as e:
+        logging.error("Saving database info " + str(e))
+
 if __name__ == "__main__":
     file_path = os.path.abspath(__file__)
     dir_path = os.path.dirname(file_path)
 
-    conf_name = "config.conf"
-    conf_path = dir_path + "\\" + conf_name
-
     db_name = None
     db_path = dir_path + "\\"
 
-    # If config exists, reads the config's values
-    if os.path.exists(conf_path):
+    FORMAT = "%(asctime)s %(levelname)s %(message)s"
+    logging.basicConfig(format=FORMAT, level=logging.DEBUG, filename="logs.log")
+
+    conf_name = "config.conf"
+    conf_path = dir_path + "\\" + conf_name
+
+    logging.info("Loading config values")
+    try:
         config = configparser.ConfigParser()
         config.read(conf_path)
         db_name = config["setup"]["db_name"]
@@ -192,22 +216,26 @@ if __name__ == "__main__":
         subject = config["email"]["subject"]
         body = config["email"]["body"]
         configure = config["setup"]["configure"].lower().strip()
-    else:
-        print("Config file has not been found!")
+    except Exception as e:
+        logging.error("Loading config file | " + str(e))
         exit()
 
+    logging.info("Connecting to the database")
     # Creates or connects to the SQLITE3 database in current directory
-    connection = sqlite3.connect(db_path)
-    cursor = connection.cursor()
+    try:
+        connection = sqlite3.connect(db_path)
+        cursor = connection.cursor()
+    except Exception as e:
+        logging.error("Creating connection to the database: " + str(e))
 
     # Checks if database contains table=birthdays
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='birthdays'")
     results = cursor.fetchone()
 
     # TODO: add this to DB migrations file
-
     # If database exists but is empty, creates table=birthdays
     if not results:
+        logging.info("Creating table birthdays")
         cursor.execute("""CREATE TABLE IF NOT EXISTS birthdays (
                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                    name TEXT NOT NULL,
@@ -216,7 +244,6 @@ if __name__ == "__main__":
                    month INTEGER NOT NULL,
                    year INTEGER NOT NULL);
         """)
-        print("Created table birthdays")
 
     # If script is in configure mode, prints main menu in terminal, allows user to interact
     if configure == "yes":
@@ -225,7 +252,7 @@ if __name__ == "__main__":
             try:
                 user_input = int(input())
                 if user_input == 1:
-                    add_new_birthday()
+                    get_birthday_data()
                 if user_input == 2:
                     remove_birthday()
                 if user_input == 3:
@@ -239,7 +266,5 @@ if __name__ == "__main__":
     else:
         check_birthdays()
 
-    # Closes cursos, connection to the database and saves the altered data
-    cursor.close()
-    connection.commit()
-    connection.close()
+    save_db_info()
+    logging.info("Closing application")
