@@ -1,5 +1,6 @@
 [setup]
 db_name =
+configure =
 
 [smtp]
 sender_email =

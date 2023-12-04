@@ -6,10 +6,10 @@ import calendar
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import logging
 
-
-# Adds birthday to the database
-def add_new_birthday():
+# Gets user input for name, lastname, year, month and day. Inserts data into database
+def get_birthday_data():
     while True:
         try:
             print("NAME: ")
@@ -24,32 +24,39 @@ def add_new_birthday():
             day = get_user_day(month, year)
             break
         except Exception as e:
-            print(e)
-    birthday = f"{year}-{month}-{day}"
-    cursor.execute("INSERT INTO birthdays (name, lastname, birthday) VALUES (?, ?, ?)", (name, lastname, birthday))
-    print("Birthday added successfully")
+            logging.error(str(e))
+    add_birthday_to_db(name, lastname, day, month, year)
+    print_seperator()
 
+def add_birthday_to_db(name, lastname, day, month, year):
+    try:
+        logging.info("Adding birthday to the database")
+        cursor.execute("INSERT INTO birthdays (name, lastname, day, month, year) VALUES (?, ?, ?, ?, ?)",
+                       (name, lastname, day, month, year))
+    except Exception as e:
+        logging.error(f"Inserting values {name}, {lastname}, {day}, {month}, {year} to the database")
 
-# Fetches all birthdays from the database, prints out tuple
+# Fetches all birthdays from the database, prints out as tuple
 def print_birthdays():
     print("Fetching all birthdays")
-    print("ID, NAME, LASTNAME, BIRTHDAY")
+    print("ID \tNAME \tLASTNAME \tDAY \tMONTH \tYEAR")
     cursor.execute("SELECT * FROM birthdays")
     results = cursor.fetchall()
     for result in results:
         print(result)
-
+    print_seperator()
 
 def print_main_menu():
     print("""
-    /Main MENU/
+    \t/Main MENU/\n
     1 - add a new birthday
     2 - remove birthday
     3 - check all birthdays
     4 - exit
     """)
+    print_seperator()
 
-
+# Returns true if year is between MIN_YEAR and MAX_YEAR
 def is_year_valid(year):
     MIN_YEAR = 1900
     MAX_YEAR = date.today().year
@@ -101,7 +108,7 @@ def get_user_day(month, year):
     IS_LEAP_YEAR = calendar.isleap(year)
 
     if IS_LEAP_YEAR:
-        day_count_dict[2] += feb_day_count + 1
+        day_count_dict[2] += day_count_dict[2] + 1
 
     while True:
         day = parse_to_int(input())
@@ -110,22 +117,27 @@ def get_user_day(month, year):
         print("Invalid day")
     return day
 
-
+# Removes birthday from database by inputing ID
 def remove_birthday():
     print_birthdays()
-    print("--------------------")
     print("Type ID to delete the birthday")
     print("ID: ")
     id = input()
-    cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
-    print("Removed")
+    try:
+        cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
+        logging.info(f"removed birthday with id {id}")
+    except Exception as e:
+        logging.error(f"removing birthday with ID {id}")
 
+#TODO: Implement feature to send one email if multiple users have birthday on the same day
 
-#TODO: Fix the incorrect year
+# Checks if any database entries matches with todays day and month.
 def check_birthdays():
-    DATE_TODAY = str(datetime.today().date())
-    cursor.execute("SELECT * FROM birthdays WHERE birthday = (?)", (DATE_TODAY,))
+    day = str(datetime.today().day)
+    month = str(datetime.today().month)
+    cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
     results = cursor.fetchall()
+    # Prints matching results
     if results:
         print("Todays birthdays: ")
         for result in results:
@@ -134,26 +146,32 @@ def check_birthdays():
             print(f"{result[1]} {result[2]}")
             send_email(name, lastname)
 
-
 def send_email(name, lastname):
-    # Create the MIME object
-    message = MIMEMultipart()
-    message['From'] = sender_email
-    message['To'] = receiver_email
-    message['Subject'] = subject
+    try:
+        # Creates Multipurpose Internet Mail Extension
+        message = MIMEMultipart()
+        message["From"] = sender_email
+        message["To"] = receiver_email
+        message["Subject"] = subject
 
-    # Attach the body to the email
-    message.attach(MIMEText(body, 'plain'))
+        final_body = f"{name} {lastname} " + body
 
-    # Connect to the SMTP server
-    with smtplib.SMTP(smtp_server, smtp_port) as server:
-        server.starttls()  # Use TLS for secure connection
-        server.login(sender_email, app_password_email)
-        text = message.as_string()
-        server.sendmail(sender_email, receiver_email, text)
+        message.attach(MIMEText(final_body, "plain"))
 
-    print('Email sent successfully!')
+        logging.info(f"connecting to {smtp_server} with port {smtp_port}")
+        # Connects to the SMTP server and sends email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, app_password_email)
+            text = message.as_string()
+            server.sendmail(sender_email, receiver_email, text)
 
+        logging.info("Email sent succesfully")
+    except Exception as e:
+        logging.error("sending email " + e)
+
+def print_seperator():
+    print("------------------------------")
 
 def parse_to_int(value):
     try:
@@ -161,67 +179,92 @@ def parse_to_int(value):
     except:
         pass
 
-
-file_path = os.path.abspath(__file__)
-dir_path = os.path.dirname(file_path)
-
-conf_name = "config.conf"
-conf_path = dir_path + "\\" + conf_name
-
-db_name = None
-db_path = dir_path + "\\"
-
-# If config exists, reads the config's values
-if os.path.exists(conf_path):
-    config = configparser.ConfigParser()
-    config.read(conf_path)
-    db_name = config["setup"]["db_name"]
-    db_path += db_name + ".db"
-    sender_email = config["smtp"]["sender_email"]
-    app_password_email = config["smtp"]["app_password_email"]
-    receiver_email = config["smtp"]["receiver_email"]
-    smtp_server = config["smtp"]["smtp_server"]
-    smtp_port = config["smtp"]["smtp_port"]
-    subject = config["email"]["subject"]
-    body = config["email"]["body"]
-else:
-    print("Config file has not been found!")
-    exit()
-
-connection = sqlite3.connect(db_path)
-cursor = connection.cursor()
-
-cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='birthdays'")
-results = cursor.fetchone()
-
-#TODO: add this to DB migrations file
-if not results:
-    cursor.execute("""CREATE TABLE IF NOT EXISTS birthdays (
-               id INTEGER PRIMARY KEY AUTOINCREMENT,
-               name TEXT NOT NULL,
-               lastname TEXT NOT NULL,
-               birthday DATE NOT NULL );
-    """)
-    print("Created table birthdays")
-
-check_birthdays()
-
-while True:
-    print_main_menu()
+# Closes cursors, connection to the database and saves the altered data
+def save_db_info():
+    logging.info("Saving information to the database")
     try:
-        user_input = int(input())
-        if user_input == 1:
-            add_new_birthday()
-        if user_input == 2:
-            remove_birthday()
-        if user_input == 3:
-            print_birthdays()
-        if user_input == 4:
-            print("Bye")
-            break
-    except ValueError as e:
-        print("Invalid input!")
+        cursor.close()
+        connection.commit()
+        connection.close()
+    except Exception as e:
+        logging.error("Saving database info " + str(e))
 
-cursor.close()
-connection.commit()
-connection.close()
+if __name__ == "__main__":
+    file_path = os.path.abspath(__file__)
+    dir_path = os.path.dirname(file_path)
+
+    db_name = None
+    db_path = dir_path + "\\"
+
+    FORMAT = "%(asctime)s %(levelname)s %(message)s"
+    logging.basicConfig(format=FORMAT, level=logging.DEBUG, filename="logs.log")
+
+    conf_name = "config.conf"
+    conf_path = dir_path + "\\" + conf_name
+
+    logging.info("Loading config values")
+    try:
+        config = configparser.ConfigParser()
+        config.read(conf_path)
+        db_name = config["setup"]["db_name"]
+        db_path += db_name + ".db"
+        sender_email = config["smtp"]["sender_email"]
+        app_password_email = config["smtp"]["app_password_email"]
+        receiver_email = config["smtp"]["receiver_email"]
+        smtp_server = config["smtp"]["smtp_server"]
+        smtp_port = config["smtp"]["smtp_port"]
+        subject = config["email"]["subject"]
+        body = config["email"]["body"]
+        configure = config["setup"]["configure"].lower().strip()
+    except Exception as e:
+        logging.error("Loading config file | " + str(e))
+        exit()
+
+    logging.info("Connecting to the database")
+    # Creates or connects to the SQLITE3 database in current directory
+    try:
+        connection = sqlite3.connect(db_path)
+        cursor = connection.cursor()
+    except Exception as e:
+        logging.error("Creating connection to the database: " + str(e))
+
+    # Checks if database contains table=birthdays
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='birthdays'")
+    results = cursor.fetchone()
+
+    # TODO: add this to DB migrations file
+    # If database exists but is empty, creates table=birthdays
+    if not results:
+        logging.info("Creating table birthdays")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS birthdays (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   name TEXT NOT NULL,
+                   lastname TEXT NOT NULL,
+                   day INTEGER NOT NULL,
+                   month INTEGER NOT NULL,
+                   year INTEGER NOT NULL);
+        """)
+
+    # If script is in configure mode, prints main menu in terminal, allows user to interact
+    if configure == "yes":
+        while True:
+            print_main_menu()
+            try:
+                user_input = int(input())
+                if user_input == 1:
+                    get_birthday_data()
+                if user_input == 2:
+                    remove_birthday()
+                if user_input == 3:
+                    print_birthdays()
+                if user_input == 4:
+                    print("Bye")
+                    break
+            except ValueError as e:
+                print("Invalid input!")
+    # Automatically checks for matching birthdays and sends email to the receiver
+    else:
+        check_birthdays()
+
+    save_db_info()
+    logging.info("Closing application")
