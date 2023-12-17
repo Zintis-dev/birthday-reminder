@@ -6,7 +6,8 @@ import calendar
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import logging
+import logging, logging.config
+import yaml
 
 # Gets user input for name, lastname, year, month and day. Inserts data into database
 def get_birthday_data():
@@ -33,12 +34,14 @@ def add_birthday_to_db(name, lastname, day, month, year):
         logging.info("Adding birthday to the database")
         cursor.execute("INSERT INTO birthdays (name, lastname, day, month, year) VALUES (?, ?, ?, ?, ?)",
                        (name, lastname, day, month, year))
+        logging.info("DONE")
     except Exception as e:
-        logging.error(f"Inserting values {name}, {lastname}, {day}, {month}, {year} to the database")
+        logging.error("Inserting values into table birthdays")
+        logging.error(str(e))
 
 # Fetches all birthdays from the database, prints out as tuple
 def print_birthdays():
-    print("Fetching all birthdays")
+    logging.info("Fetching all birthdays")
     print("ID \tNAME \tLASTNAME \tDAY \tMONTH \tYEAR")
     cursor.execute("SELECT * FROM birthdays")
     results = cursor.fetchall()
@@ -124,10 +127,12 @@ def remove_birthday():
     print("ID: ")
     id = input()
     try:
+        logging.info(f"Deleting birthday with ID {id}")
         cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
-        logging.info(f"removed birthday with id {id}")
+        logging.info("DONE")
     except Exception as e:
         logging.error(f"removing birthday with ID {id}")
+        logging.error(str(e))
 
 #TODO: Implement feature to send one email if multiple users have birthday on the same day
 
@@ -135,8 +140,16 @@ def remove_birthday():
 def check_birthdays():
     day = str(datetime.today().day)
     month = str(datetime.today().month)
-    cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
-    results = cursor.fetchall()
+
+    try:
+        logging.info(f"Fetching birthdays at {day}, {month}")
+        cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
+        results = cursor.fetchall()
+        logging.info("DONE")
+    except Exception as e:
+        logging.error(f"Unable to select {day}, {month} from birthdays")
+        logging.error(str(e))
+
     # Prints matching results
     if results:
         print("Todays birthdays: ")
@@ -166,9 +179,10 @@ def send_email(name, lastname):
             text = message.as_string()
             server.sendmail(sender_email, receiver_email, text)
 
-        logging.info("Email sent succesfully")
+        logging.info("Email has been sent succesfully")
     except Exception as e:
-        logging.error("sending email " + e)
+        logging.critical("Unable to send email")
+        logging.critical(str(e))
 
 def print_seperator():
     print("------------------------------")
@@ -186,8 +200,10 @@ def save_db_info():
         cursor.close()
         connection.commit()
         connection.close()
+        logging.info("DONE")
     except Exception as e:
-        logging.error("Saving database info " + str(e))
+        logging.critical("Unable to save information to the database!")
+        logging.critical(str(e))
 
 if __name__ == "__main__":
     file_path = os.path.abspath(__file__)
@@ -196,8 +212,10 @@ if __name__ == "__main__":
     db_name = None
     db_path = dir_path + "\\"
 
-    FORMAT = "%(asctime)s %(levelname)s %(message)s"
-    logging.basicConfig(format=FORMAT, level=logging.DEBUG, filename="logs.log")
+    with open("./logging_config.yaml", "r") as file:
+        logging_config = yaml.safe_load(file)
+
+    logging.config.dictConfig(logging_config)
 
     conf_name = "config.conf"
     conf_path = dir_path + "\\" + conf_name
@@ -217,16 +235,19 @@ if __name__ == "__main__":
         body = config["email"]["body"]
         configure = config["setup"]["configure"].lower().strip()
     except Exception as e:
-        logging.error("Loading config file | " + str(e))
+        logging.critical("Loading config file")
+        logging.critical(str(e))
         exit()
 
-    logging.info("Connecting to the database")
     # Creates or connects to the SQLITE3 database in current directory
     try:
+        logging.info("Creating connection to the databae")
         connection = sqlite3.connect(db_path)
         cursor = connection.cursor()
+        logging.info("DONE")
     except Exception as e:
-        logging.error("Creating connection to the database: " + str(e))
+        logging.critical("Unable to create connection to the database!")
+        logging.critical(str(e))
 
     # Checks if database contains table=birthdays
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='birthdays'")
