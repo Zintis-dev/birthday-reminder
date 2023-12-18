@@ -6,7 +6,8 @@ import calendar
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import logging
+import logging, logging.config
+import yaml
 
 # Gets user input for name, lastname, year, month and day. Inserts data into database
 def get_birthday_data():
@@ -24,21 +25,23 @@ def get_birthday_data():
             day = get_user_day(month, year)
             break
         except Exception as e:
-            logging.error(str(e))
+            logger.error(str(e))
     add_birthday_to_db(name, lastname, day, month, year)
     print_seperator()
 
 def add_birthday_to_db(name, lastname, day, month, year):
     try:
-        logging.info("Adding birthday to the database")
+        logger.info("Adding birthday to the database")
         cursor.execute("INSERT INTO birthdays (name, lastname, day, month, year) VALUES (?, ?, ?, ?, ?)",
                        (name, lastname, day, month, year))
+        logger.info("DONE")
     except Exception as e:
-        logging.error(f"Inserting values {name}, {lastname}, {day}, {month}, {year} to the database")
+        logger.error("Inserting values into table birthdays")
+        logger.error(str(e))
 
 # Fetches all birthdays from the database, prints out as tuple
 def print_birthdays():
-    print("Fetching all birthdays")
+    logger.info("Fetching all birthdays")
     print("ID \tNAME \tLASTNAME \tDAY \tMONTH \tYEAR")
     cursor.execute("SELECT * FROM birthdays")
     results = cursor.fetchall()
@@ -124,10 +127,12 @@ def remove_birthday():
     print("ID: ")
     id = input()
     try:
+        logger.info(f"Deleting birthday with ID {id}")
         cursor.execute("DELETE FROM birthdays WHERE ID = (?)", (id,))
-        logging.info(f"removed birthday with id {id}")
+        logger.info("DONE")
     except Exception as e:
-        logging.error(f"removing birthday with ID {id}")
+        logger.error(f"removing birthday with ID {id}")
+        logger.error(str(e))
 
 #TODO: Implement feature to send one email if multiple users have birthday on the same day
 
@@ -135,8 +140,16 @@ def remove_birthday():
 def check_birthdays():
     day = str(datetime.today().day)
     month = str(datetime.today().month)
-    cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
-    results = cursor.fetchall()
+
+    try:
+        logger.info(f"Fetching birthdays at {day}, {month}")
+        cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
+        results = cursor.fetchall()
+        logger.info("DONE")
+    except Exception as e:
+        logger.error(f"Unable to select {day}, {month} from birthdays")
+        logger.error(str(e))
+
     # Prints matching results
     if results:
         print("Todays birthdays: ")
@@ -158,7 +171,7 @@ def send_email(name, lastname):
 
         message.attach(MIMEText(final_body, "plain"))
 
-        logging.info(f"connecting to {smtp_server} with port {smtp_port}")
+        logger.info(f"connecting to {smtp_server} with port {smtp_port}")
         # Connects to the SMTP server and sends email
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
@@ -166,9 +179,10 @@ def send_email(name, lastname):
             text = message.as_string()
             server.sendmail(sender_email, receiver_email, text)
 
-        logging.info("Email sent succesfully")
+        logger.info("Email has been sent succesfully")
     except Exception as e:
-        logging.error("sending email " + e)
+        logger.critical("Unable to send email")
+        logger.critical(str(e))
 
 def print_seperator():
     print("------------------------------")
@@ -181,13 +195,15 @@ def parse_to_int(value):
 
 # Closes cursors, connection to the database and saves the altered data
 def save_db_info():
-    logging.info("Saving information to the database")
+    logger.info("Saving information to the database")
     try:
         cursor.close()
         connection.commit()
         connection.close()
+        logger.info("DONE")
     except Exception as e:
-        logging.error("Saving database info " + str(e))
+        logger.critical("Unable to save information to the database!")
+        logger.critical(str(e))
 
 if __name__ == "__main__":
     file_path = os.path.abspath(__file__)
@@ -196,13 +212,16 @@ if __name__ == "__main__":
     db_name = None
     db_path = dir_path + "\\"
 
-    FORMAT = "%(asctime)s %(levelname)s %(message)s"
-    logging.basicConfig(format=FORMAT, level=logging.DEBUG, filename="logs.log")
+    with open("./logging_config.yaml", "r") as file:
+        logging_config = yaml.safe_load(file)
+
+    logging.config.dictConfig(logging_config)
+    logger = logging.getLogger("root")
 
     conf_name = "config.conf"
     conf_path = dir_path + "\\" + conf_name
 
-    logging.info("Loading config values")
+    logger.info("Loading config values")
     try:
         config = configparser.ConfigParser()
         config.read(conf_path)
@@ -217,33 +236,28 @@ if __name__ == "__main__":
         body = config["email"]["body"]
         configure = config["setup"]["configure"].lower().strip()
     except Exception as e:
-        logging.error("Loading config file | " + str(e))
+        logger.critical("Loading config file")
+        logger.critical(str(e))
         exit()
 
-    logging.info("Connecting to the database")
     # Creates or connects to the SQLITE3 database in current directory
     try:
+        logger.info("Creating connection to the databae")
         connection = sqlite3.connect(db_path)
         cursor = connection.cursor()
+        logger.info("DONE")
     except Exception as e:
-        logging.error("Creating connection to the database: " + str(e))
+        logger.critical("Unable to create connection to the database!")
+        logger.critical(str(e))
 
     # Checks if database contains table=birthdays
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='birthdays'")
     results = cursor.fetchone()
 
-    # TODO: add this to DB migrations file
-    # If database exists but is empty, creates table=birthdays
     if not results:
-        logging.info("Creating table birthdays")
-        cursor.execute("""CREATE TABLE IF NOT EXISTS birthdays (
-                   id INTEGER PRIMARY KEY AUTOINCREMENT,
-                   name TEXT NOT NULL,
-                   lastname TEXT NOT NULL,
-                   day INTEGER NOT NULL,
-                   month INTEGER NOT NULL,
-                   year INTEGER NOT NULL);
-        """)
+        logger.critical("Database does not contain table = 'birthdays'")
+        logger.critical("Run 'migrations_db.py'")
+        exit()
 
     # If script is in configure mode, prints main menu in terminal, allows user to interact
     if configure == "yes":
@@ -267,4 +281,4 @@ if __name__ == "__main__":
         check_birthdays()
 
     save_db_info()
-    logging.info("Closing application")
+    logger.info("Closing application")
