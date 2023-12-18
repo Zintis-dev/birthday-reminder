@@ -6,14 +6,17 @@ from datetime import datetime
 from configparser import ConfigParser
 import sqlite3
 
+# Loads migrations logging file
 with open("./logging_migrations_config.yaml", "r") as file:
     logging_config = yaml.safe_load(file)
 
 logging.config.dictConfig(logging_config)
 
+# Creates logger as root user
 logger = logging.getLogger("root")
 
 logging.info("Loading config values")
+# Loads necessary values form 'config.conf'
 try:
     config = ConfigParser()
     config.read("config.conf")
@@ -119,7 +122,7 @@ for migration in migrations_list:
                 migration_value_insert(migration, exec_ts, exec_dt)
                 counter += 1
     else:
-        logger.error("2")
+        logger.error("Unable to retrieve migrations")
         break
 
 if counter == 0:
