@@ -59,7 +59,7 @@ with smtplib.SMTP(smtp_server, smtp_port) as server:
     assert server.login(sender_email, app_password_email) == True
     print("DONE")
 
-    # Create Multi Part object for email
+    # Creates Multi Part object for email
     message = MIMEMultipart()
     message["From"] = "root"
     message["To"] = config.get("smtp", "receiver_email")
