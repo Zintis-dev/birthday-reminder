@@ -89,6 +89,7 @@ def get_user_month():
         print("Invalid month")
     return month
 
+# Checks if user input for day is valid
 def is_day_valid(month, year, day):
     day_count_dict = {
         1: 31,
@@ -109,12 +110,13 @@ def is_day_valid(month, year, day):
     THIS_YEAR = datetime.year
     IS_LEAP_YEAR = calendar.isleap(year)
 
+    # If is leap yeara, adds +1 to february day count
     if IS_LEAP_YEAR:
         day_count_dict[2] += day_count_dict[2] + 1
 
     if day <= day_count_dict[month] and day > 0:
         return True
-    print("Invalid day")
+    logger.error("Invalid day")
     return False
 
 def get_user_day(month, year):
@@ -162,6 +164,7 @@ def check_birthdays():
             birthdays.append(f"{result[0]} {result[1]}")
         send_email(birthdays)
 
+# Sends email to receiver email address by connecting to STMP server
 def send_email(birthdays):
     try:
         # Creates Multipurpose Internet Mail Extension
@@ -172,6 +175,7 @@ def send_email(birthdays):
 
         final_body = body + " "
 
+        # Concats name, lastname to the string
         for birthday in birthdays:
             final_body += birthday + ", "
 
@@ -224,7 +228,7 @@ def read_birthdays_csv():
 
             if not birthday_in_db(name, lastname, day, month, year):
                 add_birthday_to_db(name, lastname, day, month, year)
-            logger.info("DONE")
+        logger.info("DONE")
 
 def birthday_in_db(name, lastname, day, month, year):
     result = []
@@ -268,7 +272,9 @@ if __name__ == "__main__":
     with open("./logging_config.yaml", "r") as file:
         logging_config = yaml.safe_load(file)
 
+    # Loads logging configuration
     logging.config.dictConfig(logging_config)
+    # Loads logger as root user
     logger = logging.getLogger("root")
 
     conf_name = "config.conf"
