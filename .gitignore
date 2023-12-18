@@ -2,3 +2,4 @@ config.conf
 database.db
 logs.log
 logs/*.log
+birthdays.csv

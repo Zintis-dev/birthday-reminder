@@ -89,8 +89,7 @@ def get_user_month():
         print("Invalid month")
     return month
 
-#TODO: Need to seperate safety checks for day input and add isInstance(day, int)
-def get_user_day(month, year):
+def is_day_valid(month, year, day):
     day_count_dict = {
         1: 31,
         2: 28,
@@ -113,11 +112,16 @@ def get_user_day(month, year):
     if IS_LEAP_YEAR:
         day_count_dict[2] += day_count_dict[2] + 1
 
+    if day <= day_count_dict[month] and day > 0:
+        return True
+    print("Invalid day")
+    return False
+
+def get_user_day(month, year):
     while True:
         day = parse_to_int(input())
-        if day <= day_count_dict[month] and day > 0:
+        if is_day_valid(month, year, day):
             break
-        print("Invalid day")
     return day
 
 # Removes birthday from database by inputing ID
@@ -134,32 +138,31 @@ def remove_birthday():
         logger.error(f"removing birthday with ID {id}")
         logger.error(str(e))
 
-#TODO: Implement feature to send one email if multiple users have birthday on the same day
-
 # Checks if any database entries matches with todays day and month.
 def check_birthdays():
     day = str(datetime.today().day)
     month = str(datetime.today().month)
 
+    logger.info(f"Fetching birthdays at {day}, {month}")
     try:
-        logger.info(f"Fetching birthdays at {day}, {month}")
-        cursor.execute("SELECT * FROM birthdays WHERE day = ? AND month = ?", (day, month))
+        cursor.execute("SELECT name, lastname FROM birthdays WHERE day = ? AND month = ?;", (day, month))
         results = cursor.fetchall()
         logger.info("DONE")
     except Exception as e:
-        logger.error(f"Unable to select {day}, {month} from birthdays")
+        logger.error(f"Unable to SELECT {day}, {month} FROM birthdays")
         logger.error(str(e))
+
+    birthdays = []
 
     # Prints matching results
     if results:
-        print("Todays birthdays: ")
+        logger.info("TODAYS BIRTHDAYS:")
         for result in results:
-            name = result[1]
-            lastname = result[2]
-            print(f"{result[1]} {result[2]}")
-            send_email(name, lastname)
+            logger.info(f"{result[0]} {result[1]}")
+            birthdays.append(f"{result[0]} {result[1]}")
+        send_email(birthdays)
 
-def send_email(name, lastname):
+def send_email(birthdays):
     try:
         # Creates Multipurpose Internet Mail Extension
         message = MIMEMultipart()
@@ -167,7 +170,10 @@ def send_email(name, lastname):
         message["To"] = receiver_email
         message["Subject"] = subject
 
-        final_body = f"{name} {lastname} " + body
+        final_body = body + " "
+
+        for birthday in birthdays:
+            final_body += birthday + ", "
 
         message.attach(MIMEText(final_body, "plain"))
 
@@ -184,6 +190,53 @@ def send_email(name, lastname):
         logger.critical("Unable to send email")
         logger.critical(str(e))
 
+def is_data_none(name, lastname, day, month, year):
+    if name == None or lastname == None or day == None or month == None or year == None:
+        logger.error(f"Incomplete information for entry in 'birthdays.csv' - {name}, {lastname}, {day}, {month}, {year}")
+        return True
+    return False
+
+def is_data_valid(day, month, year):
+    if not is_day_valid(month, year, day) and not is_month_valid(month) and not is_year_valid(year):
+        logger.error(f"Invalid information day - {day}, month - {month}, year - {year}")
+        return False
+    return True
+
+def read_birthdays_csv():
+    delimiter = ","
+
+    logger.info("Opening 'birthdays.csv'")
+    with open("birthdays.csv", "r", encoding="UTF-8") as file:
+        next(file)
+        for line in file:
+            birthday_info = line.split(delimiter)
+            name = birthday_info[0].strip()
+            lastname = birthday_info[1].strip()
+            day = parse_to_int(birthday_info[2].strip())
+            month = parse_to_int(birthday_info[3].strip())
+            year = parse_to_int(birthday_info[4].strip())
+
+            if is_data_none(name, lastname, day, month, year):
+                continue
+
+            if not is_data_valid(day, month, year):
+                continue
+
+            if not birthday_in_db(name, lastname, day, month, year):
+                add_birthday_to_db(name, lastname, day, month, year)
+            logger.info("DONE")
+
+def birthday_in_db(name, lastname, day, month, year):
+    result = []
+
+    try:
+        cursor.execute(f"SELECT id FROM 'birthdays' WHERE (name, lastname, day, month, year) = ('{name}', '{lastname}', {day}, {month}, {year});")
+        result = cursor.fetchone()
+    except Exception as e:
+        logger.error("Unable to check if birthday is in database!")
+        logger.error(str(e))
+    return result
+
 def print_seperator():
     print("------------------------------")
 
@@ -191,7 +244,7 @@ def parse_to_int(value):
     try:
         return int(value)
     except:
-        pass
+        return -1
 
 # Closes cursors, connection to the database and saves the altered data
 def save_db_info():
@@ -238,11 +291,11 @@ if __name__ == "__main__":
     except Exception as e:
         logger.critical("Loading config file")
         logger.critical(str(e))
-        exit()
+        exit(1)
 
     # Creates or connects to the SQLITE3 database in current directory
+    logger.info("Creating connection to the databae")
     try:
-        logger.info("Creating connection to the databae")
         connection = sqlite3.connect(db_path)
         cursor = connection.cursor()
         logger.info("DONE")
@@ -257,7 +310,9 @@ if __name__ == "__main__":
     if not results:
         logger.critical("Database does not contain table = 'birthdays'")
         logger.critical("Run 'migrations_db.py'")
-        exit()
+        exit(1)
+
+    read_birthdays_csv()
 
     # If script is in configure mode, prints main menu in terminal, allows user to interact
     if configure == "yes":
@@ -277,8 +332,11 @@ if __name__ == "__main__":
             except ValueError as e:
                 print("Invalid input!")
     # Automatically checks for matching birthdays and sends email to the receiver
-    else:
+    elif configure == "no":
         check_birthdays()
+    else:
+        logger.error(f"Incorrect value for configure = {configure} in 'config.conf'")
+        logger.error("Accepting 'yes' for configuring the application or 'no' for checking for birthdays and sending email!")
 
     save_db_info()
     logger.info("Closing application")
