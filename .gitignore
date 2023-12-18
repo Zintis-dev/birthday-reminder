@@ -1,4 +1,4 @@
 config.conf
 database.db
 logs.log
-./logs
+logs/*.log
